@@ -25,15 +25,18 @@ import (
 
 // BucketExists verify if bucket exists and you have permission to access it.
 func (c Client) BucketExists(bucketName string) error {
+	// Input validation.
 	if err := isValidBucketName(bucketName); err != nil {
 		return err
 	}
+	// Instantiate a new request.
 	req, err := c.newRequest("HEAD", requestMetadata{
 		bucketName: bucketName,
 	})
 	if err != nil {
 		return err
 	}
+	// Initiate the request.
 	resp, err := c.do(req)
 	defer closeResponse(resp)
 	if err != nil {
@@ -48,12 +51,13 @@ func (c Client) BucketExists(bucketName string) error {
 }
 
 // StatObject verifies if object exists and you have permission to access.
-func (c Client) StatObject(bucketName, objectName string) (ObjectStat, error) {
+func (c Client) StatObject(bucketName, objectName string) (ObjectInfo, error) {
+	// Input validation.
 	if err := isValidBucketName(bucketName); err != nil {
-		return ObjectStat{}, err
+		return ObjectInfo{}, err
 	}
 	if err := isValidObjectName(objectName); err != nil {
-		return ObjectStat{}, err
+		return ObjectInfo{}, err
 	}
 	// Instantiate a new request.
 	req, err := c.newRequest("HEAD", requestMetadata{
@@ -61,22 +65,28 @@ func (c Client) StatObject(bucketName, objectName string) (ObjectStat, error) {
 		objectName: objectName,
 	})
 	if err != nil {
-		return ObjectStat{}, err
+		return ObjectInfo{}, err
 	}
+	// Initiate the request.
 	resp, err := c.do(req)
 	defer closeResponse(resp)
 	if err != nil {
-		return ObjectStat{}, err
+		return ObjectInfo{}, err
 	}
 	if resp != nil {
 		if resp.StatusCode != http.StatusOK {
-			return ObjectStat{}, HTTPRespToErrorResponse(resp, bucketName, objectName)
+			return ObjectInfo{}, HTTPRespToErrorResponse(resp, bucketName, objectName)
 		}
 	}
-	md5sum := strings.Trim(resp.Header.Get("ETag"), "\"") // trim off the odd double quotes
+
+	// Trim off the odd double quotes from ETag in the beginning and end.
+	md5sum := strings.TrimPrefix(resp.Header.Get("ETag"), "\"")
+	md5sum = strings.TrimSuffix(md5sum, "\"")
+
+	// Parse content length.
 	size, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
-		return ObjectStat{}, ErrorResponse{
+		return ObjectInfo{}, ErrorResponse{
 			Code:            "InternalError",
 			Message:         "Content-Length is invalid. " + reportIssue,
 			BucketName:      bucketName,
@@ -86,9 +96,10 @@ func (c Client) StatObject(bucketName, objectName string) (ObjectStat, error) {
 			AmzBucketRegion: resp.Header.Get("x-amz-bucket-region"),
 		}
 	}
+	// Parse Last-Modified has http time format.
 	date, err := time.Parse(http.TimeFormat, resp.Header.Get("Last-Modified"))
 	if err != nil {
-		return ObjectStat{}, ErrorResponse{
+		return ObjectInfo{}, ErrorResponse{
 			Code:            "InternalError",
 			Message:         "Last-Modified time format is invalid. " + reportIssue,
 			BucketName:      bucketName,
@@ -98,12 +109,13 @@ func (c Client) StatObject(bucketName, objectName string) (ObjectStat, error) {
 			AmzBucketRegion: resp.Header.Get("x-amz-bucket-region"),
 		}
 	}
+	// Fetch content type if any present.
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
 	// Save object metadata info.
-	var objectStat ObjectStat
+	var objectStat ObjectInfo
 	objectStat.ETag = md5sum
 	objectStat.Key = objectName
 	objectStat.Size = size
