@@ -310,6 +310,16 @@ func (c Client) putObjectDo(bucketName, objectName string, reader io.ReadCloser,
 	customHeader := make(http.Header)
 	customHeader.Set("Content-Type", contentType)
 
+	// This code block is only possible for authenticated requests.
+	if !c.anonymous {
+		// Get bucket acl to inherit for object.
+		acl, err := c.GetBucketACL(bucketName)
+		if err != nil {
+			return ObjectInfo{}, err
+		}
+		customHeader.Set("x-amz-acl", acl.String())
+	}
+
 	// Populate request metadata.
 	reqMetadata := requestMetadata{
 		bucketName:         bucketName,

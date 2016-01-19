@@ -206,9 +206,16 @@ func (c Client) initiateMultipartUpload(bucketName, objectName, contentType stri
 		contentType = "application/octet-stream"
 	}
 
+	// Get bucket acl to inherit for object.
+	acl, err := c.GetBucketACL(bucketName)
+	if err != nil {
+		return initiateMultipartUploadResult{}, err
+	}
+
 	// Set ContentType header.
 	customHeader := make(http.Header)
 	customHeader.Set("Content-Type", contentType)
+	customHeader.Set("x-amz-acl", acl.String())
 
 	reqMetadata := requestMetadata{
 		bucketName:   bucketName,
